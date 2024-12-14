@@ -28,28 +28,25 @@ def generate_start_keyboard():
 
 @bot.message_handler(commands=['start'])
 async def start(message):
+    user_id = str(message.from_user.id)
+    user_first_name = str(message.from_user.first_name)
+    user_last_name = message.from_user.last_name
+    user_username = message.from_user.username
+    user_language_code = str(message.from_user.language_code)
+    is_premium = getattr(message.from_user, 'is_premium', False)
+    text = message.text.split()
+    welcome_message = (
+        f"Hi, {user_first_name}! 👋🏻\n\n"
+        f"Welcome to Cucumber! 🌱\n\n"
+        f"Here you can earn coins by mining them. 💰\n"
+        f"Invite friends to earn more coins together and level up faster! 🚀"
+    )
+
     try:
-        user_id = str(message.from_user.id)
-        user_first_name = message.from_user.first_name or "User"
-        user_last_name = message.from_user.last_name or ""
-        user_username = message.from_user.username or ""
-        user_language_code = message.from_user.language_code or ""
-        is_premium = message.from_user.is_premium or False
-        text = message.text.split()
-
-        welcome_message = (
-            f"Hi, {user_first_name}! 👋🏻\n\n"
-            f"Welcome to Cucumber! 🌱\n\n"
-            f"Here you can earn coins by mining them. 💰\n"
-            f"Invite friends to earn more coins together and level up faster! 🚀"
-        )
-
-        # Check if user exists in Firestore
         user_ref = db.collection('users').document(user_id)
         user_doc = user_ref.get()
 
         if not user_doc.exists:
-            # Fetch user profile photo
             photos = await bot.get_user_profile_photos(user_id, limit=1)
             if photos.total_count > 0:
                 file_id = photos.photos[0][-1].file_id
@@ -71,7 +68,6 @@ async def start(message):
             else:
                 user_image = None
 
-            # Prepare user data
             user_data = {
                 'userImage': user_image,
                 'firstName': user_first_name,
@@ -88,9 +84,9 @@ async def start(message):
                     'claimedTime': None,
                     'claimedDay': 0,
                 },
+                'links': None,
             }
 
-            # Handle referral if provided
             if len(text) > 1 and text[1].startswith('ref_'):
                 referrer_id = text[1][4:]
                 referrer_ref = db.collection('users').document(referrer_id)
@@ -98,12 +94,14 @@ async def start(message):
 
                 if referrer_doc.exists:
                     user_data['referredBy'] = referrer_id
+
                     referrer_data = referrer_doc.to_dict()
 
                     bonus_amount = 500 if is_premium else 100
-                    new_balance = referrer_data.get('balance', 0) + bonus_amount
 
-                    # Update referrer's data
+                    current_balance = referrer_data.get('balance', 0)
+                    new_balance = current_balance + bonus_amount
+
                     referrals = referrer_data.get('referrals', {})
                     referrals[user_id] = {
                         'addedValue': bonus_amount,
@@ -119,15 +117,13 @@ async def start(message):
             else:
                 user_data['referredBy'] = None
 
-            # Save new user data
             user_ref.set(user_data)
 
-        # Send welcome message with keyboard
         keyboard = generate_start_keyboard()
         await bot.reply_to(message, welcome_message, reply_markup=keyboard)
 
     except Exception as e:
-        error_message = "An error occurred. Please try again!"
+        error_message = "Error. Please try again!"
         await bot.reply_to(message, error_message)
         print(f"Error: {str(e)}")
 
@@ -137,7 +133,7 @@ class handler(BaseHTTPRequestHandler):
         post_data = self.rfile.read(content_length)
         update_dict = json.loads(post_data.decode('utf-8'))
 
-        asyncio.run(self.process_update(update_dict))
+        asyncio.ensure_future(self.process_update(update_dict))
 
         self.send_response(200)
         self.end_headers()
@@ -149,4 +145,4 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write("Bot is running".encode())
+        self.wfile.write("bot is running".encode())
